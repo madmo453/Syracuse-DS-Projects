@@ -1,0 +1,94 @@
+---
+title: "Final Again"
+author: "Michael Morales"
+date: "December 5, 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries}
+library(arules)
+library(tidyverse)
+library(arulesViz)
+library(kernlab)
+library(e1071)
+library(randomForest)
+library(neuralnet)
+library(MASS)
+```
+
+<i>Reading in the csv file</i>
+
+```{r csv}
+plData <- read.csv(file="C:/PLTrimmed2.csv", header = TRUE)
+```
+
+<i>Subsetting, correlations, plots</i>
+
+```{r correlations}
+plData$Wilks <- as.numeric(plData$Wilks)
+wilks.bw <- subset(plData, select = c("Wilks", "BodyweightKg")) #subset of Wilks and BodyweightKg columns
+summary(wilks.bw)
+wilks.yr <- subset(plData, select = c("Wilks", "Year")) #subset of Wilks and Year columns
+summary(wilks.yr)
+bench.squat <- subset(plData, select = c("BestBenchKg", "BestSquatKg")) #subset of bench and squat weight columns
+summary(bench.squat)
+bench.dead <- subset(plData, select = c("BestBenchKg", "BestDeadliftKg")) #subset of bench and deadlift weight columns
+summary(bench.dead)
+#finding correlations between the values in the subset columns
+cor(wilks.bw)
+cor(wilks.yr)
+cor(bench.squat)
+cor(bench.dead)
+#plotting
+qplot(Wilks, BodyweightKg, data=plData, geom="smooth", color="red", main = "Wilks to BodyweightKg", ylab = "Bodyweight in Kg", xlab = "Wilks Score")
+qplot(BestSquatKg, BestBenchKg, data=plData, geom="point", color="red", main = "Plotting Bench to Squat", ylab = "Bench in Kg", xlab = "Squat in Kg")
+qplot(BestDeadliftKg, BestBenchKg, data=plData, geom="point", color="red", main = "Plotting Bench to Deadlift", ylab = "Bench in Kg", xlab = "Deadlift in Kg")
+```
+
+<i>Fitting regression models</i>
+
+```{r regressions}
+#Fitting regressions by the same variables as the correlation subsets
+wilksBW.mod <- lm(Wilks ~ BodyweightKg, data = plData)
+summary(wilksBW.mod)
+wilksYr.mod <- lm(Wilks ~ Year, data = plData)
+summary(wilksYr.mod)
+benchSq.mod <- lm(BestBenchKg ~ BestSquatKg, data = plData)
+summary(benchSq.mod)
+benchDL.mod <- lm(BestBenchKg ~ BestDeadliftKg, data = plData)
+summary(benchDL.mod)
+```
+
+<i> Creating training and testing datasets</i>
+
+```{r train and test}
+randIndex <- sample (1:dim(plData)[1]) #making a randomized index to avoid systematic bias
+cutPoint2_3 <- floor(2*dim(plData)[1]/3) #calculating 2/3 cut point based on number of rows
+trainPLdata <- plData[randIndex[1:cutPoint2_3],] #randomized training data of 2/3 of the dataset
+testPLdata <- plData[randIndex[(cutPoint2_3+1):dim(plData)[1]],] #randomized test data of /3 of the set
+```
+
+<i>Building the model</i>
+
+```{r model}
+svmWilksbw <- ksvm(Wilks ~ BodyweightKg, data=trainPLdata, kernel =  "vanilladot",kpar="automatic",C=50,cross=3,prob.model=TRUE)
+svmWilksbw
+```
+
+<i> Other stuff</i>
+
+```{r other stuff}
+hist(alpha(svmWilksbw)[[1]], main="Support Vector Histogram with C=50", xlab="Support Vector Values")
+alphaindex(svmWilksbw)[[1]][alpha(svmWilksbw)[[1]] < 0.05] #list of support vectors next to list from training data
+svmPred <- predict(svmWilksbw, testPLdata, type = "votes") #confusion matrix
+str(svmPred)
+compTable <- data.frame(testPLdata[,13], svmPred[1,]) #58 is a placeholder - use the last column containing the type variable
+table(compTable) #returns the confusion matrix as output
+#See page 240 in text for explanation
+```
