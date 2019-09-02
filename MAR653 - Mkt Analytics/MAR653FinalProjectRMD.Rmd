@@ -1,0 +1,209 @@
+---
+title: "MAR653 Board Games Final Project"
+author: "Donald Beckworth"
+date: "February 21, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+###Packages
+require(ggplot2)
+require(plyr)
+require(sqldf)
+require(Hmisc)
+require(corrplot)
+require(PerformanceAnalytics)
+require(pscl)
+require(ROCR)
+require(aod)
+require(InformationValue)
+require(gridExtra)
+require(grid)
+require(lattice)
+require(arules)
+require(arulesViz)
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+library(gridExtra)
+library(GGally)
+library(nnet)
+library(scatterplot3d)
+```
+
+Dataset(s):
+
+
+
+```{r}
+BG <- read.csv("C:/Users/donal/OneDrive/Documents/MAR 653/Project/board-games-dataset/BoardGames2.csv")
+str(BG)
+```
+
+```{r}
+BGData<-BG[c(2,5,6,7,8,9,10,11,12,13,14,15,16,17,18)]
+BGData$game.id<-as.factor(BGData$game.id)
+# Randomize the order of the data frame
+BGData <- BGData[sample(1:nrow(train)), ]
+BGData
+str(BGData)
+head(BGData)
+```
+
+```{r}
+smp_siz = floor(0.10*nrow(BGData))  # creates a value for dividing the data into train and test. In this case the value is defined as 75% of the number of rows in the dataset
+smp_siz  # shows the value of the sample size
+```
+
+```{r}
+set.seed(123)   # set seed to ensure you always have same random numbers generated
+train_ind = sample(seq_len(nrow(BGData)),size = smp_siz)  # Randomly identifies therows equal to sample size ( defined in previous instruction) from  all the rows of Smarket dataset and stores the row number in train_ind
+test =BGData[train_ind,] #creates the test dataset with row numbers stored in train_ind
+train=BGData[-train_ind,]  # creates the train dataset excluding the row numbers mentioned in train_ind
+```
+
+```{r}
+str(train)
+```
+
+```{r}
+str(test)
+```
+
+
+```{r}
+summary(train)
+```
+
+
+
+
+
+
+
+```{r}
+##Correlations
+traincormtx <- rcorr(as.matrix(train[,2:15]))
+traincormtx
+```
+
+```{r}
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+    )
+}
+flattenCorrMatrix(traincormtx$r,traincormtx$P)
+```
+
+```{r, fig.width=8, fig.height=8}
+M <- cor(train[,2:15])
+corrplot(M, method="number")
+```
+
+```{r}
+# mat : is a matrix of data
+# ... : further arguments to pass to the native R cor.test function
+cor.mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    p.mat<- matrix(NA, n, n)
+    diag(p.mat) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+        }
+    }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+# matrix of the p-value of the correlation
+p.mat <- cor.mtest(train[,2:15])
+head(p.mat[, 1:14])
+```
+
+
+```{r, fig.width=25, fig.height=25}
+chart.Correlation(train[,2:15], histogram=TRUE, pch=19, cex.cor.scale=2)
+
+
+```
+
+```{r}
+###Linear Model Regression
+linearMod <- lm(wanting ~ ., data=train[,2:15])  # build linear regression model on full data
+print(linearMod)
+```
+
+```{r}
+summary(linearMod)
+```
+
+
+```{r, , fig.width=25, fig.height=25}
+ggpairs(data=train, columns=2:15, title="training data")
+```
+
+
+```{r}
+###Model Residuals
+ggplot(data=train, aes(linearMod$residuals)) + 
+  geom_histogram(binwidth = 1, color = "black", fill = "purple4") +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.line.x=element_line(),
+        axis.line.y=element_line()) +xlim(-10,10)
+  ggtitle("Histogram for Model Residuals") 
+```
+
+
+```{r}
+
+ggplot(data = train, aes(x = wanting, y = numcomments)) + geom_point()  +
+  stat_smooth(method = "lm", col = "dodgerblue3") +
+  theme(panel.background = element_rect(fill = "white"),
+        axis.line.x=element_line(),
+        axis.line.y=element_line()) +
+  ggtitle("Linear Model Fitted to Data")
+```
+
+
+
+```{r}
+summary(train)
+```
+
+
+```{r}
+test$prediction <- predict(linearMod, newdata = test[,2:15], type="response")
+summary(test)
+head(test)
+```
+
+
+```{r}
+##Calculating R Squared
+SSE <- sum((test$wanting - test$prediction)^2)
+SST <- sum((test$wanting - mean(test$prediction))^2)
+1 - SSE/SST
+```
+
+
+
+
+
+
