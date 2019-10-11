@@ -2,12 +2,12 @@ Michael A. Morales
 SUID: 592418513
 mmoral09@syr.edu
 Table of Contents:
-Additional sql code for staging
-Project presentation
-Detailed dimensional modeling workbook
-ETL documentation with screenshots
-Project presentation
-Revenue and employee cost report
-ROLAP schema code
-High-level dimensional modeling workbook
-Project charter
+Additional sql code for staging - requires SQL Studio
+Project presentation - requires MS Power Point
+Detailed dimensional modeling workbook - requires MS Excel
+ETL documentation with screenshots - requires MS Word
+Project presentation - requires MS Power Point
+Revenue and employee cost report - requires MS Excel
+ROLAP schema code - requires SQL Studio
+High-level dimensional modeling workbook - requires MS Excel
+Project charter - requires MS Word
