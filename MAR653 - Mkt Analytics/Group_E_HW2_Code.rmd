@@ -1,0 +1,395 @@
+---
+title: "R Notebook"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Homework II
+Due: 1 hour prior to week 6 live session
+Assigned Material:
+Retail Relay (C), UVA-M-0868
+Defection Detection: Measuring and Understanding the Predictive Accuracy of
+Customer Churn Models, Journal of Marketing Research
+Chapter 4: Decision Trees - from Introduction to Data Mining by Tan, Steinbach, and
+Kumar
+Assignment Questions:
+1. Use the Relay train data to develop a model to predict customer retention. You
+may use logistic regression to predict the variable "retained." You can use any
+combination of the independent variables available in the data to obtain a model
+with the best predictive ability and usability. You are free to use different
+transformations and combinations of the independent variables.
+2. Once you obtain the best model that you can find, predict retention in the test
+data. You will use the coefficients obtained from the model estimated using the
+train data to do this. Name this predicted value "pretain."
+3. Calculate the hit rate. This can be calculated as % of matches between the value
+of pretain and retained in the train data.
+4. Be prepared to present your results in class. The person with the best model, as
+judged by your peers, will win a valuable prize and of course, "bragging rights."
+
+DATA DICTIONARY
+custid	Computer generated ID to identify customers throughout the database
+retained	1, if customer is assumed to be active, 0 = otherwise
+created	Date when the contact was created in the database - when the customer joined
+firstorder	Date when the customer placed first order
+lastorder	Date when the customer placed last order
+esent	Number of emails sent
+eopenrate	Number of emails opened divided by number of emails sent
+eclickrate	Number of emails clicked divided by number of emails sent
+avgorder	Average order size for the customer
+ordfreq	Number of orders divided by customer tenure
+paperless	1 if customer subscribed for paperless communication (only online)
+refill	1 if customer subscribed for automatic refill
+doorstep	1 if customer subscribed for doorstep delivery
+train	1 if customer is in the training database
+favday	Customer's favorite delivery day
+city	City where the customer resides in
+
+```{r}
+##Libraries
+#install.packages("sqldf")
+#install.packages("Hmisc")
+#install.packages("corrplot")
+#install.packages("PerformanceAnalytics")
+#install.packages("pscl")
+#install.packages("ROCR")
+#install.packages("aod")
+#install.packages("InformationValue")
+require(ggplot2)
+require(plyr)
+require(ggplot2)
+require(plyr)
+require(sqldf)
+require(Hmisc)
+require(corrplot)
+require(PerformanceAnalytics)
+require(pscl)
+require(ROCR)
+require(aod)
+require(InformationValue)
+library(arules)
+```
+
+
+
+
+```{r}
+#Importing the Data
+setwd("C:\\Users\\madmo\\OneDrive\\Syracuse\\MAR653\\Week 7")
+train <- read.csv("relaytrain_2v2.csv")
+test <- read.csv("relaytest_2v2.csv")
+```
+
+```{r}
+##Reviewing the structure of Train
+train$created <- as.Date(train$created)
+train$firstorder <- as.Date(train$firstorder)
+train$lastorder <- as.Date(train$lastorder)
+train["flag"] <- 1
+str(train)
+#discretize continuous variables
+train$esent <- discretize(train$esent, method = "frequency", breaks = 3, labels = c("low", "medium", "high"))
+train$eopenrate <- discretize(train$eopenrate, method = "frequency", breaks = 3, labels = c("low", "medium", "high"))
+train$avgorder <- discretize(train$avgorder, method = "frequency", breaks = 3, labels = c("low", "medium", "high"))
+```
+
+```{r}
+##Reviewing the structure of Test
+test$created <- as.Date(test$created)
+test$firstorder <- as.Date(test$firstorder)
+test$lastorder <- as.Date(test$lastorder)
+str(test)
+```
+
+```{r}
+trainsum1 <- sqldf("select city, count(custid) as cnt
+                   from train
+                   group by city")
+trainsum1
+```
+
+```{r}
+traincor <- train[c(2,6,7,8,9,10,11,12,13,17,18,19,20)]
+head(traincor)
+```
+
+```{r}
+#traincormtx <- rcorr(as.matrix(traincor))
+#traincormtx
+```
+
+```{r}
+
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+    )
+}
+
+```
+
+
+```{r}
+flattenCorrMatrix(traincormtx$r,traincormtx$P)
+```
+
+```{r}
+res<-cor(traincor)
+res
+```
+
+```{r}
+corrplot(res, type = "full", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+
+```{r}
+res2 <- rcorr(as.matrix(traincor))
+```
+
+
+
+
+
+```{r}
+corrplot(res2$r, type="full", order="hclust", 
+         p.mat = res2$P, sig.level = 0.01, insig = "blank")
+```
+
+```{r, fig.width=8, fig.height=8}
+M <- cor(traincor)
+corrplot(M, method="number")
+```
+
+```{r}
+# mat : is a matrix of data
+# ... : further arguments to pass to the native R cor.test function
+cor.mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    p.mat<- matrix(NA, n, n)
+    diag(p.mat) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+        }
+    }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+# matrix of the p-value of the correlation
+p.mat <- cor.mtest(traincor)
+head(p.mat[, 1:13])
+```
+
+```{r, fig.width=8, fig.height=8}
+# Specialized the insignificant value according to the significant level
+corrplot(M, type="upper", order="hclust", 
+         p.mat = p.mat, sig.level = 0.3)
+```
+
+
+
+```{r, fig.width=25, fig.height=25}
+chart.Correlation(traincor, histogram=TRUE, pch=19)
+```
+
+
+```{r, fig.width=15, fig.height=15}
+col<- colorRampPalette(c("blue", "white", "red"))(20)
+heatmap(x = res, col = col, symm = TRUE)
+```
+
+```{r}
+initialmodel <- glm(retained ~., family=binomial(link='logit'),data=traincor)
+```
+
+```{r}
+summary(initialmodel)
+```
+
+```{r}
+anova(initialmodel, test="Chisq")
+```
+
+```{r}
+pR2(initialmodel)
+```
+
+```{r}
+p <- predict(initialmodel, newdata=subset(test,select=c(2,6,7,8,9,10,11,12,13,17,18,19,20)), type="response")
+pr <- prediction(p, test$retained)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+Basic Linear Regression Model
+
+```{r}
+linearMod <- lm(retained ~ ., data=traincor)  # build linear regression model on full data
+print(linearMod)
+```
+
+
+```{r}
+summary(linearMod)
+```
+
+
+```{r}
+AIC(linearMod)
+BIC(linearMod)
+```
+
+
+```{r}
+# Build the model on training data -
+lmMod <- lm(retained ~ ., data=traincor)  # build the model
+distPred <- predict(lmMod, test)  # predict distance
+summary(lmMod)
+```
+
+```{r}
+actuals_preds <- data.frame(cbind(actuals=test$retained, predicteds=distPred))  # make actuals_predicteds dataframe.
+correlation_accuracy <- cor(actuals_preds)  # 82.7%
+head(actuals_preds)
+```
+
+
+Probit model
+
+```{r}
+str(traincor)
+```
+
+
+```{r}
+myprobit <- glm(retained ~ esent+eopenrate+eclickrate+avgorder+ordfreq+paperless+refill+doorstep+TmAsCusDays+cityvec+day+mnth, family = binomial(link = "probit"), 
+    data = traincor)
+
+## model summary
+summary(myprobit)
+```
+
+```{r}
+##confidence intervals
+confint(myprobit)
+```
+
+
+```{r}
+predicted <- predict(myprobit, test, type="response")  # predict the probability scores
+
+```
+
+
+```{r}
+summary(myprobit)
+```
+
+```{r}
+library(InformationValue)
+optCutOff <- optimalCutoff(test$retained, predicted)[1] 
+
+```
+
+
+```{r}
+plotROC(test$retained, predicted)
+```
+
+
+```{r}
+Concordance(test$retained, predicted)
+```
+
+
+```{r}
+#Misclassification Error
+misClassError(test$retained, predicted, threshold = optCutOff)
+```
+
+```{r}
+sensitivity(test$retained, predicted, threshold = optCutOff)
+
+specificity(test$retained, predicted, threshold = optCutOff)
+
+```
+
+```{r}
+confusionMatrix(test$retained, predicted, threshold = optCutOff)
+```
+
+
+Clustering...for the fun of it
+
+```{r}
+str(traincor)
+```
+
+
+```{r}
+set.seed(20)
+clusters <- kmeans(traincor[,2:13], 5)
+
+# Save the cluster number in the dataset as column 'Borough'
+traincor$clusA <- as.factor(clusters$cluster)
+```
+
+```{r}
+str(clusters)
+```
+
+```{r}
+traincor$clusA <- as.numeric((traincor$clusA))
+str(traincor)
+```
+```{r}
+hist(traincor$clusA)
+```
+
+
+Taking another stab at it
+
+```{r}
+trainscaled<-scale(traincor)
+```
+
+
+```{r}
+# Determine number of clusters
+wss <- (nrow(trainscaled)-1)*sum(apply(trainscaled,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(trainscaled, 
+   centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+```
+
+
+```{r}
+ #K-Means Cluster Analysis
+fit <- kmeans(trainscaled, 5) # 5 cluster solution
+# get cluster means 
+aggregate(trainscaled,by=list(fit$cluster),FUN=mean)
+# append cluster assignment
+trainscaled <- data.frame(trainscaled, fit$cluster)
+```
